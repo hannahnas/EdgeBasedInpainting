@@ -1,0 +1,10 @@
+project: Thesis
+name: Edge Attention
+
+parameters:
+    model name: 'EdgeAttentionModel'
+    model class: 'EdgeAttentionModel'
+    batch size: 4
+    lr: 0.0001
+    monitor: 'val_l1_depth_loss' # val total loss?
+    epochs': 8

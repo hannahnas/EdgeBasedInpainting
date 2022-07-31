@@ -1,0 +1,11 @@
+project: Thesis
+name: Deformable baseline
+
+parameters:
+    model name: "DeformableBaseline"
+    model class: "BaselineModel"
+    encoder type: "deformable"
+    batch size: 2
+    lr: 0.0001
+    monitor: "val_l1_depth_loss"
+    epochs: 5

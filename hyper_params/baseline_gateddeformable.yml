@@ -1,0 +1,12 @@
+project: Thesis
+name: Gated Deformable baseline
+
+parameters:
+    model name: "GatedDeformableBaseline"
+    model class: "BaselineModel"
+    encoder type: "gated deformable"
+    batch size: 2
+    lr: 0.0001
+    monitor: "val_l1_depth_loss"
+    epochs: 5
+

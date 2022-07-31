@@ -1,0 +1,12 @@
+project: Thesis
+name: Baseline
+
+parameters:
+    model name: "Baseline"
+    model class: "BaselineModel"
+    encoder type: "base"
+    batch size: 8
+    lr: 0.0001
+    monitor: "val_l1_depth_loss"
+    epochs: 5
+
