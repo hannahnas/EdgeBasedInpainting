@@ -34,4 +34,4 @@ def single_disp_smoothness(disp, img):
 
     smoothness_x = disp_gradients_x * weights_x
     smoothness_y = disp_gradients_y * weights_y
-    return smoothness_x + smoothness_y
+    return (smoothness_x + smoothness_y).mean()

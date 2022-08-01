@@ -4,12 +4,14 @@ from torch import optim
 import torch.nn.functional as F
 from depth_models.skip_attention.skipattention import SkipAttentionNet
 from modules.evaluation import compute_eval_measures
+from modules.criterions import single_disp_smoothness
 
 
 class SkipAttentionModel(pl.LightningModule):
     def __init__(self, hyper_params):
         super().__init__()
         self.multiscale = hyper_params['multiscale']
+        self.smoothness_loss = hyper_params['smoothness loss']
         self.hyper_params = hyper_params
         self.model = SkipAttentionNet(hyper_params)
         
@@ -30,51 +32,99 @@ class SkipAttentionModel(pl.LightningModule):
         mask = batch['mask']
 
         depth_pred = self.forward(batch)
+        
         if self.multiscale:
             _, _, _, size = depth_gt.shape
-            out_64, out_128, out_256 = depth_pred
-            gt_64 = F.interpolate(depth_gt, size=(size//4, size//4), mode='bilinear')
-            mask_64 = F.interpolate(depth_gt, size=(size//4, size//4), mode='nearest')
+            out_down2x, out_down1x, out_full = depth_pred
+
+            gt_down2x = F.interpolate(depth_gt, size=(size//4, size//4), mode='bilinear', align_corners=True)
+            mask_down2x = F.interpolate(depth_gt, size=(size//4, size//4), mode='nearest')
             
+            gt_down1x = F.interpolate(depth_gt, size=(size//2, size//2), mode='bilinear', align_corners=True)
+            mask_down1x = F.interpolate(depth_gt, size=(size//2, size//2), mode='nearest')
 
-            gt_128 = F.interpolate(depth_gt, size=(size//2, size//2), mode='bilinear')
-            mask_128 = F.interpolate(depth_gt, size=(size//2, size//2), mode='nearest')
-
-            size_64_loss = F.l1_loss(out_64 * mask_64, gt_64 * mask_64, reduction='mean') / mask_64.sum()
-            self.log('l1_64', size_64_loss)
-            size_128_loss = F.l1_loss(out_128 * mask_128, gt_128 * mask_128, reduction='mean') / mask_128.sum()
-            self.log('l1_128', size_128_loss)
-            size_256_loss = F.l1_loss(out_256 * mask, depth_gt * mask, reduction='mean') / mask.sum()
-            self.log('l1_256', size_256_loss)
+            l1_down2x = F.l1_loss(out_down2x * mask_down2x, gt_down2x * mask_down2x, reduction='mean') / mask_down2x.sum()
+            l1_down1x = F.l1_loss(out_down1x * mask_down1x, gt_down1x * mask_down1x, reduction='mean') / mask_down1x.sum()
+            l1_full = F.l1_loss(out_full * mask, depth_gt * mask, reduction='mean') / mask.sum()
             
-            l1_loss = size_64_loss + size_128_loss + size_256_loss
+            l1_loss = (l1_down2x, l1_down1x, l1_full)
+        else:
+            l1_loss = F.l1_loss(depth_pred * mask, depth_gt * mask, reduction='mean') / mask.sum()
 
-            return l1_loss
+        if self.smoothness_loss:
+            if self.multiscale:
+                depth_pred = out_full
+            smooth_loss = single_disp_smoothness(batch['rgb'], depth_pred)
+        else:
+            smooth_loss = None
 
-        l1_loss = F.l1_loss(depth_pred * mask, depth_gt * mask, reduction='mean') / mask.sum()
-        # self.log('train_l1_loss', l1_loss)
-        return l1_loss
+        return l1_loss, smooth_loss
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.hyper_params['lr'])
 
-        return {"optimizer": optimizer, "monitor": "val_l1_depth_loss"}
+        return {"optimizer": optimizer, "monitor": self.hyper_params['monitor']}
 
     def training_step(self, batch, batch_idx):
-        l1_loss = self._get_loss(batch)
-        self.log('train_l1_depth_loss', l1_loss)
-
-        return l1_loss
+        l1_loss, smooth_loss = self._get_loss(batch)
+        
+        if self.multiscale:
+            (l1_down2x, l1_down1x, l1_full) = l1_loss
+            self.log('train_l1_downsampled2x', l1_down2x)
+            self.log('train_l1_downsampled1x', l1_down1x)
+            self.log('train_l1_full', l1_full)
+            l1_loss = l1_down2x + l1_down1x + l1_full
+        else:
+            self.log('train_l1_depth_loss', l1_loss)
+        
+        if self.smoothness_loss:
+            self.log('train_smoothness_loss', smooth_loss)
+            loss = self.hyper_params['lambda l1'] * l1_loss - self.hyper_params['lambda smooth'] * smooth_loss
+            self.log('train_weighted_loss', loss)
+        else:
+            loss = l1_loss
+        
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        l1_loss = self._get_loss(batch)
-        self.log('val_l1_depth_loss', l1_loss)
+        l1_loss, smooth_loss = self._get_loss(batch)
+        
+        if self.multiscale:
+            (l1_down2x, l1_down1x, l1_full) = l1_loss
+            self.log('val_l1_downsampled2x', l1_down2x)
+            self.log('val_l1_downsampled1x', l1_down1x)
+            self.log('val_l1_full', l1_full)
+            l1_loss = l1_down2x + l1_down1x + l1_full
+        else:
+            self.log('val_l1_depth_loss', l1_loss)
+        
+        if self.smoothness_loss:
+            self.log('train_smoothness_loss', smooth_loss)
+            loss = self.hyper_params['lambda l1'] * l1_loss - self.hyper_params['lambda smooth'] * smooth_loss
+        else:
+            loss = l1_loss
+
+        self.log('val_loss_total', loss)
 
 
     def test_step(self, batch, batch_idx):
-        l1_loss = self._get_loss(batch)
-        self.log('test_l1_depth_loss', l1_loss)
+        # Loss terms
+        l1_loss, smooth_loss = self._get_loss(batch)
+        if self.multiscale:
+            (l1_down2x, l1_down1x, l1_full) = l1_loss
+            self.log('test_l1_downsampled2x', l1_down2x)
+            self.log('test_l1_downsampled1x', l1_down1x)
+            self.log('test_l1_full', l1_full)
+            l1_loss = l1_down2x + l1_down1x + l1_full
+        else:
+            self.log('test_l1_depth_loss', l1_loss)
+        
+        if self.smoothness_loss:
+            self.log('test_smoothness_loss', smooth_loss)
+            weighted_loss = self.hyper_params['lambda l1'] * l1_loss + self.hyper_params['lambda smooth'] * smooth_loss
+            self.log('test_weighted_loss', weighted_loss)
 
+        # Evaluation measures
         depth_pred = self.forward(batch)
         if self.multiscale:
             _, _, depth_pred = depth_pred

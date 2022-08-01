@@ -2,14 +2,16 @@ project: Thesis
 name: Skip Attention
 
 parameters:
-    model name: 'MultiScaleSkipAttention'
+    model name: 'MultiScaleSkipAttentionWithSmoothness'
     model class: 'SkipAttentionModel'
     encoder type: 'base'
 
     multiscale: True
-    smoothness loss: False
+    smoothness loss: True
+    lambda l1: 0.9
+    lambda smooth: 0.1
     
     batch size: 8
     lr: 0.0001
-    monitor: 'val_l1_full'
+    monitor: 'val_loss_total'
     epochs: 12

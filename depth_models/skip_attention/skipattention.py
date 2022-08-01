@@ -1,36 +1,39 @@
 import torch
 import torch.nn as nn
 from modules.dataset import InpaintDataset
-from modules.blocks import GatedResNetBlockEnc, ResNetBlockEnc, ResNetBlockDec
-from modules.convs import GatedConv2d
+from modules.blocks import DeformableResNetBlockEnc, GatedResNetBlockEnc, ResNetBlockEnc, ResNetBlockDec, GatedDeformableResNetBlockEnc
+from modules.convs import GatedConv2d, BasicDeformConv2d
 from torch.utils.data import DataLoader
 
 
 class SkipEncoder(nn.Module):
-    def __init__(self, in_channels, gated=False):
+    def __init__(self, in_channels, type='base'):
         super().__init__()
-        self._create_network(in_channels, gated=gated)
+        self._create_network(in_channels, type=type)
         self._init_params()
 
-    def _create_network(self, in_channels, gated):
+    def _create_network(self, in_channels, type):
 
-        if gated:
+        if type == 'gated':
             resblock = GatedResNetBlockEnc
-        else:
+            first_conv = GatedConv2d
+        elif type ==  'deformable':
+            resblock = DeformableResNetBlockEnc
+            first_conv = BasicDeformConv2d
+        elif type == 'gated deformable':
+            resblock = GatedDeformableResNetBlockEnc
+            first_conv = GatedConv2d
+        elif type == 'base':
             resblock = ResNetBlockEnc
-
-        if gated:
-            self.layer_0 = nn.Sequential(
-                GatedConv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False),
-                nn.BatchNorm2d(64),
-                nn.ReLU(inplace=True),
-            )
+            first_conv = nn.Conv2d
         else:
-            self.layer_0 = nn.Sequential(
-                nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False),
-                nn.BatchNorm2d(64),
-                nn.ReLU(inplace=True),
-            )
+            print('Encoder type does not exist.')
+
+        self.layer_0 = nn.Sequential(
+            first_conv(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+        )
 
         self.layer_1 = nn.Sequential(
             resblock(64, 64, subsample=False),
@@ -70,8 +73,8 @@ class SkipAttentionNet(nn.Module):
     def __init__(self, hyper_params):
         super().__init__()
         self.edge_encoder = SkipEncoder(in_channels=1)
-        self.rgb_encoder = SkipEncoder(in_channels=3, gated = hyper_params['gated'])
-        self.depth_encoder = SkipEncoder(in_channels=1, gated=hyper_params['gated'])
+        self.rgb_encoder = SkipEncoder(in_channels=3, type=hyper_params['encoder type'])
+        self.depth_encoder = SkipEncoder(in_channels=1, type=hyper_params['encoder type'])
 
         self.multiscale = hyper_params['multiscale']
 
