@@ -16,7 +16,7 @@ if __name__ == "__main__":
         hyper_params = yaml.load(f, Loader=yaml.SafeLoader)['parameters']
 
     hyper_params['experiment id'] = EXPERIMENT_ID
-    pprint('hyper parameters\n')
+    pprint(hyper_params)
     
     run_experiment(hyper_params)
 

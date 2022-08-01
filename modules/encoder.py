@@ -14,17 +14,21 @@ class ResNetEncoder(nn.Module):
 
         if type == 'gated':
             resblock = GatedResNetBlockEnc
+            first_conv = GatedConv2d
         elif type ==  'deformable':
             resblock = DeformableResNetBlockEnc
+            first_conv = BasicDeformConv2d
         elif type == 'gated deformable':
             resblock = GatedDeformableResNetBlockEnc
+            first_conv = GatedConv2d
         elif type == 'base':
             resblock = ResNetBlockEnc
+            first_conv = nn.Conv2d
         else:
             print('Encoder type does not exist.')
 
         self.layer_0 = nn.Sequential(
-            GatedConv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False),
+            first_conv(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
         )

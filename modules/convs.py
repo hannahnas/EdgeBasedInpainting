@@ -58,7 +58,7 @@ class UpConv(nn.Module):
 
 class BasicDeformConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=1, stride=1,
-                 dilation=1, groups=1, offset_groups=1):
+                 padding=1, bias=False, dilation=1, groups=1, offset_groups=1):
         super().__init__()
         offset_channels = 2 * kernel_size * kernel_size
         self.conv2d_offset = nn.Conv2d(
@@ -74,10 +74,10 @@ class BasicDeformConv2d(nn.Module):
             out_channels,
             kernel_size=kernel_size,
             stride=stride,
-            padding=dilation,
+            padding=padding,
             dilation=dilation,
             groups=groups,
-            bias=False
+            bias=bias
         )
     
     def forward(self, x):
